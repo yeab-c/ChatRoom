@@ -12,8 +12,7 @@ A real-time chat application that connects users randomly for temporary conversa
 - [User Manual](#user-manual)
 - [Architecture Documentation](#architecture-documentation)
 - [API Documentation](#api-documentation)
-- [Troubleshooting](#troubleshooting)
-- [License](#license)
+
 
 ## Features
 
