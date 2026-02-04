@@ -16,24 +16,27 @@ export interface Chat {
   unreadCount?: number;
   createdAt: Date;
   updatedAt: Date;
-  
+
   // Populated fields (from backend)
   participantDetails?: User[];
   groupDetails?: Group;
 }
 
 export interface Message {
-  _id: string;
+  id: string;
   chatId: string;
-  senderId: string;
+  sender: {
+    id: string;
+    name: string;
+    avatar: string;
+  };
   type: MessageType;
   content: string;
+  imageUrl?: string;
   readBy: string[];
-  createdAt: Date;
-  updatedAt: Date;
-  
-  // Populated
-  sender?: User;
+  deliveredTo: string[];
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface Group {

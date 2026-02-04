@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Slot } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ClerkProvider, ClerkLoaded } from '@clerk/clerk-expo';
@@ -5,6 +6,7 @@ import * as SecureStore from 'expo-secure-store';
 import { AuthProvider } from '../src/context/AuthContext';
 import { ThemeProvider, useTheme } from '../src/context/ThemeContext';
 import { SocketProvider } from '../src/context/SocketContext';
+import { ChatListProvider } from '../src/context/ChatListContext';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 // Token cache for Clerk
@@ -25,11 +27,12 @@ const tokenCache = {
   },
 };
 
-const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
+// Get Clerk publishable key
+const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 if (!publishableKey) {
   throw new Error(
-    'Missing Publishable Key. Please set EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY in your .env'
+    'Missing EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY in .env file'
   );
 }
 
@@ -52,7 +55,9 @@ export default function RootLayout() {
           <ThemeProvider>
             <AuthProvider>
               <SocketProvider>
-                <RootLayoutContent />
+                <ChatListProvider>
+                  <RootLayoutContent />
+                </ChatListProvider>
               </SocketProvider>
             </AuthProvider>
           </ThemeProvider>

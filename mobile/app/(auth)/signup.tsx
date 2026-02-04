@@ -7,6 +7,7 @@ import {
   Platform,
   ScrollView,
   Alert,
+  Image,
 } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import { useSignUp } from '@clerk/clerk-expo';
@@ -111,6 +112,7 @@ export default function SignupScreen() {
     setLoading(true);
 
     try {
+      // Create user in Clerk
       const signUpAttempt = await signUp.create({
         emailAddress: email.trim().toLowerCase(),
         password,
@@ -118,6 +120,7 @@ export default function SignupScreen() {
         lastName: name.split(' ').slice(1).join(' ') || undefined,
       });
 
+      // Send verification email
       await signUpAttempt.prepareEmailAddressVerification({ strategy: 'email_code' });
 
       Alert.alert(
@@ -143,7 +146,7 @@ export default function SignupScreen() {
 
         switch (error.code) {
           case 'form_identifier_exists':
-            Alert.alert('Account Exists', 'An account with this email already exists.');
+            Alert.alert('Account Exists', 'An account with this email already exists. Please login instead.');
             break;
           case 'form_password_pwned':
             Alert.alert('Weak Password', 'This password has been found in a data breach. Please choose a stronger password.');
@@ -177,14 +180,11 @@ export default function SignupScreen() {
       >
         {/* Logo */}
         <View style={[styles.logoContainer]}>
-          <LinearGradient
-            colors={[theme.colors.gradientStart, theme.colors.gradientEnd]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[styles.logo, { borderRadius: theme.borderRadius.xl }]}
-          >
-            <Text style={styles.logoIcon}>💬</Text>
-          </LinearGradient>
+          <Image
+            source={require('../../assets/images/chatroom.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
         </View>
 
         {/* Title */}
@@ -210,8 +210,8 @@ export default function SignupScreen() {
         {/* Form */}
         <View style={[styles.form, { marginTop: theme.spacing.xxl }]}>
           <Input
-            label="Full Name"
-            placeholder="John Doe"
+            label="Username"
+            placeholder="Abebe"
             value={name}
             onChangeText={setName}
             leftIcon="person-outline"
@@ -293,13 +293,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   logo: {
-    width: 80,
-    height: 80,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  logoIcon: {
-    fontSize: 40,
+    width: 150,
+    height: 150,
   },
   title: {
     textAlign: 'center',

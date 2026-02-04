@@ -7,17 +7,20 @@ import {
   Platform,
   ScrollView,
   Alert,
+  Image,
 } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import { useSignIn } from '@clerk/clerk-expo';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../src/context/ThemeContext';
+import { useAuth } from '../../src/context/AuthContext';
 import { Button } from '../../src/components/common/Button';
 import { Input } from '../../src/components/common/Input';
 
 export default function LoginScreen() {
   const { theme } = useTheme();
   const { signIn, setActive, isLoaded } = useSignIn();
+  const { refreshUser } = useAuth();
   const router = useRouter();
 
   const [email, setEmail] = useState('');
@@ -65,14 +68,23 @@ export default function LoginScreen() {
     setLoading(true);
 
     try {
+      // Sign in with Clerk
       const signInAttempt = await signIn.create({
         identifier: email.trim().toLowerCase(),
         password,
       });
 
       if (signInAttempt.status === 'complete') {
+        // Set active session
         await setActive({ session: signInAttempt.createdSessionId });
-        router.replace('/(tabs)');
+        
+        // AuthContext will automatically sync with backend via authService.syncUser()
+        // This creates/updates user in PostgreSQL
+        
+        // Small delay to let AuthContext sync
+        setTimeout(() => {
+          router.replace('/(tabs)');
+        }, 500);
       } else if (signInAttempt.status === 'needs_first_factor') {
         Alert.alert('Verification Required', 'Please complete two-factor authentication.');
       } else {
@@ -123,14 +135,11 @@ export default function LoginScreen() {
       >
         {/* Logo */}
         <View style={[styles.logoContainer]}>
-          <LinearGradient
-            colors={[theme.colors.gradientStart, theme.colors.gradientEnd]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[styles.logo, { borderRadius: theme.borderRadius.xl }]}
-          >
-            <Text style={styles.logoIcon}>💬</Text>
-          </LinearGradient>
+          <Image
+            source={require('../../assets/images/chatroom.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
         </View>
 
         {/* Title */}
@@ -217,19 +226,14 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingHorizontal: 24,
     paddingBottom: 40,
-    justifyContent: 'center', // Center vertically
+    justifyContent: 'center',
   },
   logoContainer: {
     alignItems: 'center',
   },
   logo: {
-    width: 100,
-    height: 100,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  logoIcon: {
-    fontSize: 50,
+    width: 180,
+    height: 180,
   },
   title: {
     textAlign: 'center',

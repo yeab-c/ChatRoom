@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,12 +6,16 @@ import {
   FlatList,
   TouchableOpacity,
   TextInput,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/context/ThemeContext';
+import { useAuth } from '../../src/context/AuthContext';
 import { Avatar } from '../../src/components/common/Avatar';
 import { Button } from '../../src/components/common/Button';
+import { chatService, groupService } from '../../src/services/api';
 
 interface Connection {
   id: string;
@@ -19,22 +23,57 @@ interface Connection {
   avatar: string;
 }
 
-const MOCK_CONNECTIONS: Connection[] = [
-  { id: '2', name: 'Alex Chen', avatar: '' },
-  { id: '3', name: 'Sarah Johnson', avatar: '' },
-  { id: '4', name: 'Mike Rodriguez', avatar: '' },
-  { id: '5', name: 'Emma Wilson', avatar: '' },
-  { id: '6', name: 'David Kim', avatar: '' },
-];
-
 export default function CreateGroupScreen() {
   const { theme } = useTheme();
+  const { user } = useAuth();
   const router = useRouter();
   const [groupName, setGroupName] = useState('');
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [connections, setConnections] = useState<Connection[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
 
-  const filteredConnections = MOCK_CONNECTIONS.filter((c) =>
+  // Fetch user's connections (saved chats)
+  useEffect(() => {
+    const fetchConnections = async () => {
+      try {
+        const response = await chatService.getChats(1, 100);
+        console.log('Fetched chats:', response);
+        
+        if (!response.chats || response.chats.length === 0) {
+          console.log('No saved chats found');
+          setConnections([]);
+          return;
+        }
+        
+        const uniqueUsers = response.chats.map((chat) => ({
+          id: chat.otherUser.id,
+          name: chat.otherUser.name,
+          avatar: chat.otherUser.avatar || '',
+        }));
+        setConnections(uniqueUsers);
+        console.log('Connections loaded:', uniqueUsers.length);
+      } catch (error: any) {
+        console.error('Failed to load connections:', error);
+        console.error('Error message:', error.message);
+        console.error('Error response:', error.response);
+        console.error('Error data:', error.response?.data);
+        
+        const errorMessage = error.response?.data?.message 
+          || error.message 
+          || 'Failed to load connections. Please try again.';
+        
+        Alert.alert('Error', errorMessage);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchConnections();
+  }, []);
+
+  const filteredConnections = connections.filter((c) =>
     c.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -50,19 +89,42 @@ export default function CreateGroupScreen() {
     }
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!groupName.trim()) {
-      alert('Please enter a group name');
+      Alert.alert('Error', 'Please enter a group name');
       return;
     }
     if (selectedUsers.length === 0) {
-      alert('Please select at least one person');
+      Alert.alert('Error', 'Please select at least one person');
       return;
     }
 
-    // TODO: Create group API call
-    router.back();
+    try {
+      setCreating(true);
+      const group = await groupService.createGroup({
+        name: groupName.trim(),
+        memberIds: selectedUsers,
+      });
+
+      Alert.alert('Success', 'Group created successfully');
+      router.replace({
+        pathname: '/group/[id]',
+        params: { id: group.id },
+      });
+    } catch (error: any) {
+      Alert.alert('Error', error.response?.data?.message || 'Failed to create group');
+    } finally {
+      setCreating(false);
+    }
   };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.centered, { backgroundColor: theme.colors.background }]}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+      </View>
+    );
+  }
 
   const renderItem = ({ item }: { item: Connection }) => {
     const isSelected = selectedUsers.includes(item.id);
@@ -167,17 +229,30 @@ export default function CreateGroupScreen() {
         data={filteredConnections}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
-        contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.sm }}
+        contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.sm, flexGrow: 1 }}
+        ListEmptyComponent={
+          <View style={[styles.emptyContainer, { paddingVertical: 60 }]}>
+            <Ionicons name="people-outline" size={64} color={theme.colors.textMuted} />
+            <Text style={[styles.emptyText, { color: theme.colors.text, marginTop: theme.spacing.lg }]}>
+              {searchQuery ? 'No connections found' : 'No connections yet'}
+            </Text>
+            <Text style={[styles.emptySubtext, { color: theme.colors.textMuted, marginTop: theme.spacing.sm, textAlign: 'center', paddingHorizontal: 40 }]}>
+              {searchQuery 
+                ? 'Try a different search term' 
+                : 'Match with users and save chats to add them as connections'}
+            </Text>
+          </View>
+        }
       />
 
       {/* Create Button */}
       <View style={{ padding: theme.spacing.lg }}>
         <Button
-          title={`Create Group (${selectedUsers.length})`}
+          title={creating ? 'Creating...' : `Create Group (${selectedUsers.length})`}
           onPress={handleCreate}
           gradient
           fullWidth
-          disabled={selectedUsers.length === 0}
+          disabled={selectedUsers.length === 0 || creating}
         />
       </View>
     </View>
@@ -187,6 +262,10 @@ export default function CreateGroupScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  centered: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   header: {
     flexDirection: 'row',
@@ -229,5 +308,16 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 16,
     fontWeight: '500',
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  emptySubtext: {
+    fontSize: 14,
   },
 });

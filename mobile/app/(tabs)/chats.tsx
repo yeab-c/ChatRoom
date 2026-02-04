@@ -6,126 +6,115 @@ import {
   FlatList,
   TouchableOpacity,
   TextInput,
+  RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/context/ThemeContext';
+import { useSocket } from '../../src/context/SocketContext';
+import { useChatListContext } from '../../src/context/ChatListContext';
 import { ChatListItem } from '../../src/components/chat/ChatListItem';
-import { ChatListItem as ChatListItemType } from '../../src/types';
-import { formatDistanceToNow } from 'date-fns';
-
-// Mock data
-const MOCK_CHATS: ChatListItemType[] = [
-  {
-    chatId: 'group1',
-    participants: ['1', '2', '3', '4', '5'],
-    type: 'group',
-    isTemporary: false,
-    savedBy: [],
-    isSaved: true,
-    displayName: 'Weekend Hangout',
-    displayAvatar: '',
-    lastMessageText: 'Emma: See you all this Saturday!',
-    lastMessageTime: '5m ago',
-    unreadCount: 3,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    chatId: 'group2',
-    participants: ['1', '6', '7', '8'],
-    type: 'group',
-    isTemporary: false,
-    savedBy: [],
-    isSaved: true,
-    displayName: 'Tech Talk',
-    displayAvatar: '',
-    lastMessageText: 'Mike: Check out this new framework',
-    lastMessageTime: '1h ago',
-    unreadCount: 0,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    chatId: 'chat1',
-    participants: ['1', '2'],
-    type: 'permanent',
-    isTemporary: false,
-    savedBy: ['1', '2'],
-    isSaved: true,
-    displayName: 'Alex Chen',
-    displayAvatar: '',
-    lastMessageText: "That sounds great! Let's do it 🎉",
-    lastMessageTime: '2m ago',
-    unreadCount: 2,
-    otherUser: {
-      id: '2',
-      clerkId: 'clerk_2',
-      email: 'alex@bitscollege.edu.et',
-      name: 'Alex Chen',
-      avatar: '',
-      isOnline: true,
-      isSearching: false,
-      lastSeen: new Date(),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    },
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    chatId: 'chat2',
-    participants: ['1', '3'],
-    type: 'permanent',
-    isTemporary: false,
-    savedBy: ['1', '3'],
-    isSaved: true,
-    displayName: 'Sarah Johnson',
-    displayAvatar: '',
-    lastMessageText: 'See you tomorrow!',
-    lastMessageTime: '1h ago',
-    unreadCount: 0,
-    otherUser: {
-      id: '3',
-      clerkId: 'clerk_3',
-      email: 'sarah@bitscollege.edu.et',
-      name: 'Sarah Johnson',
-      avatar: '',
-      isOnline: false,
-      isSearching: false,
-      lastSeen: new Date(Date.now() - 3600000),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    },
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-];
 
 export default function ChatsScreen() {
   const { theme } = useTheme();
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
-  const [chats, setChats] = useState<ChatListItemType[]>(MOCK_CHATS);
-  const [filteredChats, setFilteredChats] = useState<ChatListItemType[]>(MOCK_CHATS);
+  const [activeChat, setActiveChat] = useState<string | null>(null);
 
-  // Filter chats when search query changes
-  useEffect(() => {
-    if (searchQuery.trim() === '') {
-      setFilteredChats(chats);
-    } else {
-      const filtered = chats.filter((chat) =>
-        chat.displayName.toLowerCase().includes(searchQuery.toLowerCase())
+  // Use shared chat list context
+  const {
+    chats,
+    loading,
+    refreshing,
+    hasMore,
+    refresh,
+    loadMore,
+    deleteChat,
+    updateUserOnlineStatus,
+  } = useChatListContext();
+
+  const { 
+    onNewMessage, 
+    onUserOnline, 
+    onUserOffline 
+  } = useSocket();
+
+  // Reset active chat and refresh when screen comes into focus
+  // Useref to prevent multiple rapid refreshes
+  const lastRefreshTime = React.useRef<number>(0);
+  
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log('Chats screen focused');
+      setActiveChat(null);
+      
+      // Only refresh if it's been more than 10 seconds since last refresh
+      const now = Date.now();
+      if (now - lastRefreshTime.current > 10000) {
+        console.log('Refreshing chat list');
+        lastRefreshTime.current = now;
+        refresh();
+      } else {
+        console.log('⏭Skipping refresh (too soon)');
+      }
+    }, [])
+  );
+
+  // Filter chats based on search
+  const filteredChats = searchQuery.trim() === ''
+    ? chats
+    : chats.filter((chat) =>
+        chat.otherUser?.name?.toLowerCase().includes(searchQuery.toLowerCase())
       );
-      setFilteredChats(filtered);
-    }
-  }, [searchQuery, chats]);
 
-  const groupChats = filteredChats.filter((chat) => chat.type === 'group');
-  const directChats = filteredChats.filter((chat) => chat.type !== 'group');
 
   const handleCreateGroup = () => {
     router.push('/group/create');
+  };
+
+  const handleChatPress = (chatId: string, otherUser: any, isGroup?: boolean, groupId?: string) => {
+    console.log('Opening chat:', chatId, 'isGroup:', isGroup);
+    
+    if (isGroup && groupId) {
+      // Navigate to group chat
+      router.push({
+        pathname: '/group/[id]',
+        params: { id: groupId },
+      });
+    } else {
+      // Navigate to one-on-one chat
+      setActiveChat(chatId);
+      router.push({
+        pathname: '/chat/[id]',
+        params: { id: chatId, otherUser: JSON.stringify(otherUser) },
+      });
+    }
+  };
+
+  const handleDeleteChat = async (chatId: string) => {
+    try {
+      await deleteChat(chatId);
+    } catch (error) {
+      console.error('Failed to delete chat:', error);
+    }
+  };
+
+  const renderChatItem = ({ item }: { item: any }) => {
+    const isGroup = !item.otherUser;
+    return (
+      <ChatListItem 
+        chat={item}
+        onPress={() => handleChatPress(
+          item.chatId, 
+          item.otherUser, 
+          isGroup,
+          isGroup ? item.id : undefined
+        )}
+        onDelete={() => handleDeleteChat(item.chatId)}
+      />
+    );
   };
 
   return (
@@ -197,78 +186,55 @@ export default function ChatsScreen() {
       </View>
 
       {/* Chat List */}
-      <FlatList
-        data={[]}
-        renderItem={() => null}
-        ListHeaderComponent={
-          <>
-            {/* Groups Section */}
-            {groupChats.length > 0 && (
-              <>
-                <Text
-                  style={[
-                    styles.sectionTitle,
-                    {
-                      color: theme.colors.textMuted,
-                      paddingHorizontal: theme.spacing.lg,
-                      paddingTop: theme.spacing.lg,
-                      paddingBottom: theme.spacing.sm,
-                    },
-                  ]}
-                >
-                  GROUPS
-                </Text>
-                {groupChats.map((chat) => (
-                  <ChatListItem key={chat.chatId} chat={chat} />
-                ))}
-              </>
-            )}
-
-            {/* Direct Messages Section */}
-            {directChats.length > 0 && (
-              <>
-                <Text
-                  style={[
-                    styles.sectionTitle,
-                    {
-                      color: theme.colors.textMuted,
-                      paddingHorizontal: theme.spacing.lg,
-                      paddingTop: theme.spacing.lg,
-                      paddingBottom: theme.spacing.sm,
-                    },
-                  ]}
-                >
-                  DIRECT MESSAGES
-                </Text>
-                {directChats.map((chat) => (
-                  <ChatListItem key={chat.chatId} chat={chat} />
-                ))}
-              </>
-            )}
-
-            {/* Empty State */}
-            {filteredChats.length === 0 && (
-              <View style={styles.emptyContainer}>
-                <Ionicons name="chatbubbles-outline" size={64} color={theme.colors.textMuted} />
-                <Text
-                  style={[
-                    styles.emptyText,
-                    { color: theme.colors.textSecondary, marginTop: theme.spacing.lg },
-                  ]}
-                >
-                  {searchQuery ? 'No chats found' : 'No chats yet'}
-                </Text>
-                <Text
-                  style={[styles.emptySubtext, { color: theme.colors.textMuted, marginTop: theme.spacing.sm }]}
-                >
-                  {searchQuery ? 'Try a different search' : 'Start a random match to begin chatting!'}
-                </Text>
+      {loading && chats.length === 0 ? (
+        <View style={styles.centerContainer}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <Text style={[styles.loadingText, { color: theme.colors.textSecondary, marginTop: theme.spacing.md }]}>
+            Loading chats...
+          </Text>
+        </View>
+      ) : (
+        <FlatList
+          data={filteredChats}
+          keyExtractor={(item) => item.chatId}
+          renderItem={renderChatItem}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={refresh}
+              tintColor={theme.colors.primary}
+            />
+          }
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.5}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="chatbubbles-outline" size={64} color={theme.colors.textMuted} />
+              <Text
+                style={[
+                  styles.emptyText,
+                  { color: theme.colors.textSecondary, marginTop: theme.spacing.lg },
+                ]}
+              >
+                {searchQuery ? 'No chats found' : 'No chats yet'}
+              </Text>
+              <Text
+                style={[styles.emptySubtext, { color: theme.colors.textMuted, marginTop: theme.spacing.sm }]}
+              >
+                {searchQuery ? 'Try a different search' : 'Start a random match to begin chatting!'}
+              </Text>
+            </View>
+          }
+          ListFooterComponent={
+            hasMore && !loading ? (
+              <View style={styles.footerLoader}>
+                <ActivityIndicator size="small" color={theme.colors.primary} />
               </View>
-            )}
-          </>
-        }
-        showsVerticalScrollIndicator={false}
-      />
+            ) : null
+          }
+          showsVerticalScrollIndicator={false}
+        />
+      )}
     </View>
   );
 }
@@ -313,6 +279,14 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 0.5,
   },
+  centerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 16,
+  },
   emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -324,5 +298,9 @@ const styles = StyleSheet.create({
   },
   emptySubtext: {
     fontSize: 14,
+  },
+  footerLoader: {
+    paddingVertical: 20,
+    alignItems: 'center',
   },
 });

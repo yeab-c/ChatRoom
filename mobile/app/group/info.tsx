@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Alert,
   Modal,
   TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,85 +17,127 @@ import { useTheme } from '../../src/context/ThemeContext';
 import { useAuth } from '../../src/context/AuthContext';
 import { Avatar } from '../../src/components/common/Avatar';
 import { Button } from '../../src/components/common/Button';
+import { chatService } from '../../src/services/api';
+import groupService from '../../src/services/api/group';
 
 export default function GroupInfoScreen() {
   const { theme } = useTheme();
   const { user } = useAuth();
   const router = useRouter();
-  const { groupId } = useLocalSearchParams();
+  const { id } = useLocalSearchParams();
 
+  const [group, setGroup] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [availableUsers, setAvailableUsers] = useState<any[]>([]);
 
-  // Mock group data
-  const [groupMembers, setGroupMembers] = useState([
-    { id: '1', name: 'You', avatar: '', isOnline: true },
-    { id: '2', name: 'Alex Chen', avatar: '', isOnline: true },
-    { id: '3', name: 'Sarah Johnson', avatar: '', isOnline: false },
-    { id: '4', name: 'Mike Rodriguez', avatar: '', isOnline: true },
-    { id: '5', name: 'Emma Wilson', avatar: '', isOnline: false },
-  ]);
+  // Fetch group details
+  useEffect(() => {
+    const fetchGroup = async () => {
+      try {
+        const data = await groupService.getGroupById(id as string);
+        setGroup(data);
+      } catch (error: any) {
+        Alert.alert('Error', 'Failed to load group details');
+        router.back();
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  // Mock available users to add (users not in the group)
-  const availableUsers = [
-    { id: '6', name: 'John Smith', avatar: '', isOnline: true },
-    { id: '7', name: 'Lisa Anderson', avatar: '', isOnline: false },
-    { id: '8', name: 'David Brown', avatar: '', isOnline: true },
-    { id: '9', name: 'Maria Garcia', avatar: '', isOnline: true },
-    { id: '10', name: 'James Taylor', avatar: '', isOnline: false },
-  ];
+    fetchGroup();
+  }, [id]);
 
-  const group = {
-    id: groupId as string,
-    name: 'Weekend Hangout',
-    avatar: '',
-    creatorId: '1',
-    members: groupMembers,
-  };
+  // Fetch available users when modal opens
+  useEffect(() => {
+    if (showAddMemberModal) {
+      const fetchAvailableUsers = async () => {
+        try {
+          // Get user's connections (saved chats)
+          const response = await chatService.getChats(1, 100);
+          const connections = response.chats.map((chat) => ({
+            id: chat.otherUser.id,
+            name: chat.otherUser.name,
+            avatar: chat.otherUser.avatar || '',
+            isOnline: chat.otherUser.isOnline || false,
+          }));
+
+          // Filter out users already in the group
+          const memberIds = group?.members.map((m: any) => m.userId) || [];
+          const available = connections.filter((c) => !memberIds.includes(c.id));
+          setAvailableUsers(available);
+        } catch (error) {
+          console.error('Failed to load available users:', error);
+          Alert.alert('Error', 'Failed to load available users');
+        }
+      };
+
+      fetchAvailableUsers();
+    }
+  }, [showAddMemberModal, group]);
+
+  if (loading || !group) {
+    return (
+      <View style={[styles.container, styles.centered, { backgroundColor: theme.colors.background }]}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+      </View>
+    );
+  }
 
   const isCreator = group.creatorId === user?.id;
 
-  const filteredAvailableUsers = availableUsers.filter(
-    (user) =>
-      user.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
-      !groupMembers.some((member) => member.id === user.id)
+  const filteredAvailableUsers = availableUsers.filter((u) =>
+    u.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const handleAddMembers = () => {
+    if (group.memberCount >= 10) {
+      Alert.alert('Limit Reached', 'Groups can have a maximum of 10 members');
+      return;
+    }
     setShowAddMemberModal(true);
   };
 
-  const handleAddMember = (userId: string, userName: string) => {
-    const userToAdd = availableUsers.find((u) => u.id === userId);
-    if (userToAdd) {
-      setGroupMembers([...groupMembers, userToAdd]);
-      Alert.alert('Member Added', `${userName} has been added to the group.`);
+  const handleAddMember = async (userId: string, userName: string) => {
+    try {
+      await groupService.addMember(group.id, userId);
+      Alert.alert('Success', `${userName} has been added to the group`);
+      
+      // Refresh group data
+      const updatedGroup = await groupService.getGroupById(group.id);
+      setGroup(updatedGroup);
       setSearchQuery('');
+    } catch (error: any) {
+      Alert.alert('Error', error.response?.data?.message || 'Failed to add member');
     }
   };
 
-  const handleStartChat = (memberId: string, memberName: string) => {
-    // Can't chat with yourself
+  const handleStartChat = async (memberId: string, memberName: string) => {
     if (memberId === user?.id) {
-      Alert.alert('Cannot Start Chat', 'You cannot start a chat with yourself.');
+      Alert.alert('Cannot Start Chat', 'You cannot start a chat with yourself');
       return;
     }
 
-    Alert.alert('Start Chat', `Start a chat with ${memberName}?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Start Chat',
-        onPress: () => {
-          router.push({
-            pathname: '/chat/[id]',
-            params: { id: `chat_${memberId}` },
-          });
+    try {
+      const result = await chatService.createGroupMemberChat({
+        otherUserId: memberId,
+        groupId: group.id,
+      });
+
+      router.push({
+        pathname: '/chat/[id]',
+        params: {
+          id: result.chatId,
+          otherUser: JSON.stringify(result.otherUser),
         },
-      },
-    ]);
+      });
+    } catch (error: any) {
+      Alert.alert('Error', error.response?.data?.message || 'Failed to start chat');
+    }
   };
 
-  const handleRemoveMember = (memberId: string, memberName: string) => {
+  const handleRemoveMember = async (memberId: string, memberName: string) => {
     Alert.alert(
       'Remove Member',
       `Are you sure you want to remove ${memberName} from the group?`,
@@ -103,9 +146,17 @@ export default function GroupInfoScreen() {
         {
           text: 'Remove',
           style: 'destructive',
-          onPress: () => {
-            setGroupMembers(groupMembers.filter((member) => member.id !== memberId));
-            Alert.alert('Removed', `${memberName} has been removed from the group.`);
+          onPress: async () => {
+            try {
+              await groupService.removeMember(group.id, memberId);
+              Alert.alert('Success', `${memberName} has been removed`);
+              
+              // Refresh group data
+              const updatedGroup = await groupService.getGroupById(group.id);
+              setGroup(updatedGroup);
+            } catch (error: any) {
+              Alert.alert('Error', error.response?.data?.message || 'Failed to remove member');
+            }
           },
         },
       ]
@@ -118,9 +169,14 @@ export default function GroupInfoScreen() {
       {
         text: 'Leave',
         style: 'destructive',
-        onPress: () => {
-          Alert.alert('Left Group', 'You have left the group.');
-          router.replace('/(tabs)/chats');
+        onPress: async () => {
+          try {
+            await groupService.leaveGroup(group.id, user!.id);
+            Alert.alert('Success', 'You have left the group');
+            router.replace('/(tabs)/chats');
+          } catch (error: any) {
+            Alert.alert('Error', error.response?.data?.message || 'Failed to leave group');
+          }
         },
       },
     ]);
@@ -135,9 +191,14 @@ export default function GroupInfoScreen() {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => {
-            Alert.alert('Deleted', 'Group has been deleted.');
-            router.replace('/(tabs)/chats');
+          onPress: async () => {
+            try {
+              await groupService.deleteGroup(group.id);
+              Alert.alert('Success', 'Group has been deleted');
+              router.replace('/(tabs)/chats');
+            } catch (error: any) {
+              Alert.alert('Error', error.response?.data?.message || 'Failed to delete group');
+            }
           },
         },
       ]
@@ -145,7 +206,8 @@ export default function GroupInfoScreen() {
   };
 
   const renderMember = ({ item }: { item: any }) => {
-    const isCurrentUser = item.id === user?.id;
+    const isCurrentUser = item.userId === user?.id;
+    const memberUser = item.user;
 
     return (
       <TouchableOpacity
@@ -159,17 +221,17 @@ export default function GroupInfoScreen() {
             borderRadius: theme.borderRadius.md,
           },
         ]}
-        onPress={() => !isCurrentUser && handleStartChat(item.id, item.name)}
+        onPress={() => !isCurrentUser && handleStartChat(item.userId, memberUser.name)}
         disabled={isCurrentUser}
         activeOpacity={isCurrentUser ? 1 : 0.7}
       >
-        <Avatar uri={item.avatar} name={item.name} size="medium" online={item.isOnline} />
+        <Avatar uri={memberUser.avatar} name={memberUser.name} size="medium" online={memberUser.isOnline} />
         <View style={{ marginLeft: theme.spacing.md, flex: 1 }}>
           <Text style={[styles.memberName, { color: theme.colors.text }]}>
-            {item.name} {item.id === group.creatorId && '(Admin)'}
+            {memberUser.name} {item.role === 'admin' && '(Admin)'}
           </Text>
           <Text style={[styles.memberStatus, { color: theme.colors.textMuted }]}>
-            {item.isOnline ? 'Online' : 'Offline'}
+            {memberUser.isOnline ? 'Online' : 'Offline'}
           </Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -185,7 +247,7 @@ export default function GroupInfoScreen() {
             <TouchableOpacity
               onPress={(e) => {
                 e.stopPropagation();
-                handleRemoveMember(item.id, item.name);
+                handleRemoveMember(item.userId, memberUser.name);
               }}
             >
               <Ionicons name="remove-circle-outline" size={24} color={theme.colors.error} />
@@ -261,7 +323,7 @@ export default function GroupInfoScreen() {
             { color: theme.colors.textMuted, marginTop: theme.spacing.xs },
           ]}
         >
-          {group.members.length} members
+          {group.memberCount} members
         </Text>
 
         {isCreator && (
@@ -404,6 +466,10 @@ export default function GroupInfoScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  centered: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   header: {
     flexDirection: 'row',

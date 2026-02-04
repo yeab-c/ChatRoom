@@ -39,7 +39,7 @@ export default function VerifyEmailScreen() {
     setLoading(true);
 
     try {
-      // Verify the email address
+      // Verify the email address with Clerk
       const completeSignUp = await signUp.attemptEmailAddressVerification({
         code,
       });
@@ -48,13 +48,21 @@ export default function VerifyEmailScreen() {
         // Set the active session
         await setActive({ session: completeSignUp.createdSessionId });
         
+        // AuthContext will automatically sync with backend via authService.syncUser()
+        // This creates the user in PostgreSQL database
+        
         Alert.alert(
           'Success!',
-          'Your account has been created successfully.',
+          'Your account has been created successfully. You will be synced with our servers.',
           [
             {
               text: 'OK',
-              onPress: () => router.replace('/(tabs)'),
+              onPress: () => {
+                // Small delay to let AuthContext sync with backend
+                setTimeout(() => {
+                  router.replace('/(tabs)');
+                }, 500);
+              },
             },
           ]
         );

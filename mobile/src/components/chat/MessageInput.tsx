@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   TextInput,
@@ -17,6 +17,7 @@ interface MessageInputProps {
   onSendImage: (imageUrl: string) => void;
   onTyping?: () => void;
   onStopTyping?: () => void;
+  disabled?: boolean;
   placeholder?: string;
 }
 
@@ -25,12 +26,22 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   onSendImage,
   onTyping,
   onStopTyping,
+  disabled = false,
   placeholder = 'Type a message...',
 }) => {
   const { theme } = useTheme();
   const [text, setText] = useState('');
-  const { showImagePickerOptions, isUploading } = useImagePicker();
-  let typingTimeout: NodeJS.Timeout;
+  const { uploadMessageImage, isUploading } = useImagePicker();
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleTextChange = (value: string) => {
     setText(value);
@@ -39,8 +50,13 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     if (onTyping && value.length > 0) {
       onTyping();
       
-      clearTimeout(typingTimeout);
-      typingTimeout = setTimeout(() => {
+      // Clear previous timeout
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+      
+      // Set new timeout
+      typingTimeoutRef.current = setTimeout(() => {
         onStopTyping?.();
       }, 1000);
     } else if (value.length === 0) {
@@ -49,20 +65,24 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   };
 
   const handleSend = () => {
-    if (text.trim()) {
+    if (text.trim() && !disabled) {
       onSendText(text.trim());
       setText('');
       onStopTyping?.();
     }
   };
 
-  const handleImagePick = () => {
-    showImagePickerOptions(
-      (imageUrl) => {
+  const handleImagePick = async () => {
+    try {
+      // Upload image for message - sends immediately after upload
+      const imageUrl = await uploadMessageImage(false);
+      
+      if (imageUrl) {
         onSendImage(imageUrl);
-      },
-      { folder: 'messages', maxWidth: 1024, maxHeight: 1024, quality: 0.7 }
-    );
+      }
+    } catch (error) {
+      console.error('Failed to upload image:', error);
+    }
   };
 
   return (
@@ -83,13 +103,17 @@ export const MessageInput: React.FC<MessageInputProps> = ({
       >
         <TouchableOpacity
           onPress={handleImagePick}
-          disabled={isUploading}
+          disabled={isUploading || disabled}
           style={[styles.iconButton, { marginRight: theme.spacing.sm }]}
         >
           {isUploading ? (
             <ActivityIndicator size="small" color={theme.colors.primary} />
           ) : (
-            <Ionicons name="image-outline" size={24} color={theme.colors.textMuted} />
+            <Ionicons 
+              name="image-outline" 
+              size={24} 
+              color={disabled ? theme.colors.textMuted + '60' : theme.colors.textMuted} 
+            />
           )}
         </TouchableOpacity>
 
@@ -112,18 +136,20 @@ export const MessageInput: React.FC<MessageInputProps> = ({
             style={[styles.input, { color: theme.colors.text }]}
             multiline
             maxLength={1000}
+            editable={!disabled}
           />
         </View>
 
         <TouchableOpacity
           onPress={handleSend}
-          disabled={!text.trim()}
+          disabled={!text.trim() || disabled}
           style={[
             styles.sendButton,
             {
-              backgroundColor: theme.colors.primary,
+              backgroundColor: !text.trim() || disabled ? theme.colors.textMuted : theme.colors.primary,
               borderRadius: theme.borderRadius.full,
               marginLeft: theme.spacing.sm,
+              opacity: !text.trim() || disabled ? 0.5 : 1,
             },
           ]}
         >

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,42 +14,75 @@ import { useTheme } from '../../src/context/ThemeContext';
 import { useAuth } from '../../src/context/AuthContext';
 import { Avatar } from '../../src/components/common/Avatar';
 import { Button } from '../../src/components/common/Button';
+import { ImageViewer } from '../../src/components/common/ImageViewer';
+import { userService, chatService } from '../../src/services/api';
 
 export default function ChatInfoScreen() {
   const { theme } = useTheme();
   const { user } = useAuth();
   const router = useRouter();
-  const { chatId } = useLocalSearchParams();
+  const { chatId, otherUser: otherUserParam, fromGroup } = useLocalSearchParams();
 
-  // Mock other user data - replace with actual data from API
-  const otherUser = {
-    id: '2',
-    name: 'Alex Chen',
-    email: 'alex@bitscollege.edu.et',
-    avatar: '',
-    bio: 'Love to meet new people and explore different cultures!',
-    gender: 'Male',
-    age: 25,
-    country: 'Ethiopia',
-    hobbies: 'Travel,Music,Photography',
-    isOnline: true,
+  const [otherUser, setOtherUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [blocking, setBlocking] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [startingChat, setStartingChat] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  
+  const isFromGroup = fromGroup === 'true';
+
+  useEffect(() => {
+    loadUserData();
+  }, []);
+
+  const loadUserData = async () => {
+    try {
+      setLoading(true);
+      
+      // Parse from params to get user ID
+      if (otherUserParam) {
+        const parsed = JSON.parse(otherUserParam as string);
+        
+        // Fetch full user details from backend
+        try {
+          const fullUserData = await userService.getUserById(parsed.id);
+          setOtherUser(fullUserData);
+        } catch (error) {
+          console.error('Failed to fetch full user data, using params:', error);
+          // Fallback to params data if API fails
+          setOtherUser(parsed);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load user:', error);
+      Alert.alert('Error', 'Failed to load user information');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const hobbies = otherUser.hobbies.split(',');
-
-  const handleBlock = () => {
+  const handleBlock = async () => {
     Alert.alert(
       'Block User',
-      `Are you sure you want to block ${otherUser.name}? You won't be able to message each other.`,
+      `Are you sure you want to block ${otherUser?.name}? You won't be able to message each other.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Block',
           style: 'destructive',
           onPress: async () => {
-            // TODO: Call API to block user
-            Alert.alert('Blocked', `${otherUser.name} has been blocked.`);
-            router.back();
+            try {
+              setBlocking(true);
+              await userService.blockUser(otherUser.id);
+              Alert.alert('Blocked', `${otherUser.name} has been blocked.`);
+              router.back();
+            } catch (error) {
+              console.error('Failed to block user:', error);
+              Alert.alert('Error', 'Failed to block user');
+            } finally {
+              setBlocking(false);
+            }
           },
         },
       ]
@@ -58,17 +92,28 @@ export default function ChatInfoScreen() {
   const handleReport = () => {
     Alert.prompt(
       'Report User',
-      `Why are you reporting ${otherUser.name}?`,
+      `Why are you reporting ${otherUser?.name}? Please provide details (minimum 10 characters).`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Report',
           style: 'destructive',
-          onPress: (reason: string | null | undefined) => {
-            if (reason?.trim()) {
-              // TODO: Call API to report user
-              Alert.alert('Reported', 'Thank you for reporting. We will review this user.');
+          onPress: async (reason: string | undefined) => {
+            if (!reason?.trim() || reason.trim().length < 10) {
+              Alert.alert('Error', 'Please provide a reason with at least 10 characters');
+              return;
+            }
+            
+            try {
+              await userService.reportUser(otherUser.id, reason.trim(), chatId as string);
+              Alert.alert(
+                'Reported', 
+                'Thank you for reporting. We will review this user. If they receive 5 reports, they will be automatically banned for 24 hours.'
+              );
               router.back();
+            } catch (error: any) {
+              console.error('Failed to report user:', error);
+              Alert.alert('Error', error.response?.data?.message || 'Failed to report user');
             }
           },
         },
@@ -79,7 +124,7 @@ export default function ChatInfoScreen() {
     );
   };
 
-  const handleDeleteChat = () => {
+  const handleDeleteChat = async () => {
     Alert.alert(
       'Delete Chat',
       'Are you sure you want to delete this chat? This action cannot be undone.',
@@ -89,14 +134,73 @@ export default function ChatInfoScreen() {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            // TODO: Call API to delete chat
-            Alert.alert('Deleted', 'Chat has been deleted.');
-            router.replace('/(tabs)/chats');
+            try {
+              setDeleting(true);
+              await chatService.deleteChat(chatId as string);
+              Alert.alert('Deleted', 'Chat has been deleted.');
+              router.replace('/(tabs)/chats');
+            } catch (error) {
+              console.error('Failed to delete chat:', error);
+              Alert.alert('Error', 'Failed to delete chat');
+            } finally {
+              setDeleting(false);
+            }
           },
         },
       ]
     );
   };
+
+  const handleStartChat = async () => {
+    try {
+      setStartingChat(true);
+      
+      // Create or get existing chat with this group member
+      const result = await chatService.createGroupMemberChat({
+        otherUserId: otherUser.id,
+        groupId: chatId as string,
+      });
+      
+      // Navigate to the chat
+      router.replace({
+        pathname: '/chat/[id]',
+        params: { id: result.chatId },
+      });
+    } catch (error: any) {
+      // Show user-friendly error message
+      const errorMessage = error.response?.data?.message || 'Failed to start chat';
+      Alert.alert('Cannot Start Chat', errorMessage);
+    } finally {
+      setStartingChat(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.colors.background, justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+        <Text style={[styles.loadingText, { color: theme.colors.textSecondary, marginTop: theme.spacing.md }]}>
+          Loading user info...
+        </Text>
+      </View>
+    );
+  }
+
+  if (!otherUser) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.colors.background, justifyContent: 'center', alignItems: 'center' }]}>
+        <Text style={{ color: theme.colors.text }}>User not found</Text>
+        <Button
+          title="Go Back"
+          onPress={() => router.back()}
+          variant="outline"
+          style={{ marginTop: theme.spacing.lg }}
+        />
+      </View>
+    );
+  }
+
+  const hobbies = otherUser.hobbies?.split(',').filter(Boolean) || [];
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -123,7 +227,13 @@ export default function ChatInfoScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Profile Section */}
         <View style={[styles.profileSection, { padding: theme.spacing.xl }]}>
-          <Avatar uri={otherUser.avatar} name={otherUser.name} size="xlarge" online={otherUser.isOnline} />
+          <Avatar 
+            uri={otherUser.avatar} 
+            name={otherUser.name} 
+            size="xlarge" 
+            online={otherUser.isOnline}
+            onPress={() => otherUser.avatar && setSelectedImage(otherUser.avatar)}
+          />
           <Text
             style={[
               styles.name,
@@ -221,7 +331,7 @@ export default function ChatInfoScreen() {
               HOBBIES
             </Text>
             <View style={styles.hobbiesContainer}>
-              {hobbies.map((hobby, index) => (
+              {hobbies.map((hobby: string, index: number) => (
                 <View
                   key={index}
                   style={[
@@ -245,11 +355,22 @@ export default function ChatInfoScreen() {
 
         {/* Actions */}
         <View style={[styles.actions, { padding: theme.spacing.lg, marginTop: theme.spacing.xl }]}>
+          {isFromGroup && (
+            <Button
+              title="Start Chat"
+              onPress={handleStartChat}
+              variant="primary"
+              fullWidth
+              disabled={startingChat}
+              style={{ marginBottom: theme.spacing.md }}
+            />
+          )}
           <Button
             title="Block User"
             onPress={handleBlock}
             variant="outline"
             fullWidth
+            disabled={blocking}
             style={{ marginBottom: theme.spacing.md }}
           />
           <Button
@@ -259,16 +380,28 @@ export default function ChatInfoScreen() {
             fullWidth
             style={{ marginBottom: theme.spacing.md }}
           />
-          <Button
-            title="Delete Chat"
-            onPress={handleDeleteChat}
-            variant="outline"
-            fullWidth
-            style={{ borderColor: theme.colors.error }}
-            textStyle={{ color: theme.colors.error }}
-          />
+          {!isFromGroup && (
+            <Button
+              title="Delete Chat"
+              onPress={handleDeleteChat}
+              variant="outline"
+              fullWidth
+              disabled={deleting}
+              style={{ borderColor: theme.colors.error }}
+              textStyle={{ color: theme.colors.error }}
+            />
+          )}
         </View>
       </ScrollView>
+
+      {/* Image Viewer */}
+      {selectedImage && (
+        <ImageViewer
+          visible={!!selectedImage}
+          imageUrl={selectedImage}
+          onClose={() => setSelectedImage(null)}
+        />
+      )}
     </View>
   );
 }
@@ -286,6 +419,9 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: '600',
+  },
+  loadingText: {
+    fontSize: 16,
   },
   profileSection: {
     alignItems: 'center',

@@ -46,6 +46,7 @@ export default function ForgotPasswordScreen() {
     setLoading(true);
 
     try {
+      // Request password reset code from Clerk
       await signIn.create({
         strategy: 'reset_password_email_code',
         identifier: email.trim().toLowerCase(),
@@ -78,6 +79,7 @@ export default function ForgotPasswordScreen() {
     setLoading(true);
 
     try {
+      // Reset password with Clerk
       const result = await signIn?.attemptFirstFactor({
         strategy: 'reset_password_email_code',
         code,
@@ -87,7 +89,7 @@ export default function ForgotPasswordScreen() {
       if (result?.status === 'complete') {
         Alert.alert(
           'Success!',
-          'Your password has been reset successfully.',
+          'Your password has been reset successfully. Please login with your new password.',
           [
             {
               text: 'OK',
@@ -191,8 +193,9 @@ export default function ForgotPasswordScreen() {
                 onChangeText={setNewPassword}
                 secureTextEntry
                 leftIcon="lock-closed-outline"
-                textContentType="newPassword"
-                autoComplete="password-new"
+                textContentType="none"
+                autoComplete="off"
+                importantForAutofill="no"
               />
 
               <Button

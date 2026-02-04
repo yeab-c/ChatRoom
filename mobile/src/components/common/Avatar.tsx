@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Image, Text, StyleSheet, ViewStyle } from 'react-native';
+import { View, Image, Text, StyleSheet, ViewStyle, TouchableOpacity } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../context/ThemeContext';
 
@@ -9,6 +9,7 @@ interface AvatarProps {
   size?: 'small' | 'medium' | 'large' | 'xlarge';
   online?: boolean;
   style?: ViewStyle;
+  onPress?: () => void;
 }
 
 export const Avatar: React.FC<AvatarProps> = ({
@@ -17,6 +18,7 @@ export const Avatar: React.FC<AvatarProps> = ({
   size = 'medium',
   online,
   style,
+  onPress,
 }) => {
   const { theme } = useTheme();
 
@@ -35,7 +37,7 @@ export const Avatar: React.FC<AvatarProps> = ({
     .toUpperCase()
     .slice(0, 2);
 
-  return (
+  const content = (
     <View style={[styles.container, { width: avatarSize, height: avatarSize }, style]}>
       {uri ? (
         <Image
@@ -71,6 +73,16 @@ export const Avatar: React.FC<AvatarProps> = ({
       )}
     </View>
   );
+
+  if (onPress && uri) {
+    return (
+      <TouchableOpacity onPress={onPress} activeOpacity={0.8}>
+        {content}
+      </TouchableOpacity>
+    );
+  }
+
+  return content;
 };
 
 const styles = StyleSheet.create({

@@ -1,10 +1,13 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Platform } from 'react-native';
+import { Platform, View, Text, StyleSheet } from 'react-native';
 import { useTheme } from '../../src/context/ThemeContext';
+import { useChatListContext } from '../../src/context/ChatListContext';
 
 export default function TabsLayout() {
   const { theme } = useTheme();
+  const { getTotalUnread } = useChatListContext();
+  const totalUnread = getTotalUnread();
 
   return (
     <Tabs
@@ -43,7 +46,16 @@ export default function TabsLayout() {
         options={{
           title: 'Chats',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="chatbubbles" size={size + 2} color={color} />
+            <View>
+              <Ionicons name="chatbubbles" size={size + 2} color={color} />
+              {totalUnread > 0 && (
+                <View style={[styles.badge, { backgroundColor: theme.colors.error || '#EF4444' }]}>
+                  <Text style={styles.badgeText}>
+                    {totalUnread > 99 ? '99+' : totalUnread}
+                  </Text>
+                </View>
+              )}
+            </View>
           ),
         }}
       />
@@ -59,3 +71,22 @@ export default function TabsLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -10,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+});

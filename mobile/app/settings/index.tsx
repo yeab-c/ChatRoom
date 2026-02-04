@@ -19,14 +19,28 @@ export default function SettingsScreen() {
   const router = useRouter();
 
   const handleLogout = () => {
-    Alert.alert('Logout', 'Are you sure you want to logout?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Logout',
-        style: 'destructive',
-        onPress: () => logout(),
-      },
-    ]);
+    Alert.alert(
+      'Logout', 
+      'Are you sure you want to logout?', 
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Logout',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await logout();
+            } catch (error) {
+              console.error('Logout error:', error);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleEditProfile = () => {
+    router.push('/settings/edit-profile');
   };
 
   const handleBlockedUsers = () => {
@@ -56,8 +70,61 @@ export default function SettingsScreen() {
         <View style={{ width: 24 }} />
       </View>
 
-      {/* Settings Options */}
+      {/* Account Section */}
       <View style={[styles.section, { marginTop: theme.spacing.lg }]}>
+        <Text style={[styles.sectionTitle, { 
+          color: theme.colors.textMuted, 
+          paddingHorizontal: theme.spacing.lg,
+          marginBottom: theme.spacing.sm,
+        }]}>
+          ACCOUNT
+        </Text>
+
+        {/* Edit Profile */}
+        <TouchableOpacity
+          style={[
+            styles.settingItem,
+            {
+              backgroundColor: theme.colors.surface,
+              borderRadius: theme.borderRadius.md,
+              padding: theme.spacing.lg,
+              marginHorizontal: theme.spacing.lg,
+            },
+          ]}
+          onPress={handleEditProfile}
+        >
+          <View style={styles.settingLeft}>
+            <View
+              style={[
+                styles.iconContainer,
+                { backgroundColor: theme.colors.background, borderRadius: theme.borderRadius.sm },
+              ]}
+            >
+              <Ionicons name="person-outline" size={24} color={theme.colors.text} />
+            </View>
+            <View style={{ marginLeft: theme.spacing.md }}>
+              <Text style={[styles.settingTitle, { color: theme.colors.text }]}>
+                Edit Profile
+              </Text>
+              <Text style={[styles.settingSubtitle, { color: theme.colors.textMuted }]}>
+                Update your information
+              </Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Appearance Section */}
+      <View style={[styles.section, { marginTop: theme.spacing.xl }]}>
+        <Text style={[styles.sectionTitle, { 
+          color: theme.colors.textMuted, 
+          paddingHorizontal: theme.spacing.lg,
+          marginBottom: theme.spacing.sm,
+        }]}>
+          APPEARANCE
+        </Text>
+
         {/* Dark Mode */}
         <TouchableOpacity
           style={[
@@ -70,6 +137,7 @@ export default function SettingsScreen() {
             },
           ]}
           onPress={toggleTheme}
+          activeOpacity={0.7}
         >
           <View style={styles.settingLeft}>
             <View
@@ -85,7 +153,7 @@ export default function SettingsScreen() {
                 Dark Mode
               </Text>
               <Text style={[styles.settingSubtitle, { color: theme.colors.textMuted }]}>
-                Switch to dark theme
+                {isDark ? 'Switch to light theme' : 'Switch to dark theme'}
               </Text>
             </View>
           </View>
@@ -96,6 +164,17 @@ export default function SettingsScreen() {
             thumbColor="#FFFFFF"
           />
         </TouchableOpacity>
+      </View>
+
+      {/* Privacy Section */}
+      <View style={[styles.section, { marginTop: theme.spacing.xl }]}>
+        <Text style={[styles.sectionTitle, { 
+          color: theme.colors.textMuted, 
+          paddingHorizontal: theme.spacing.lg,
+          marginBottom: theme.spacing.sm,
+        }]}>
+          PRIVACY
+        </Text>
 
         {/* Blocked Users */}
         <TouchableOpacity
@@ -106,7 +185,6 @@ export default function SettingsScreen() {
               borderRadius: theme.borderRadius.md,
               padding: theme.spacing.lg,
               marginHorizontal: theme.spacing.lg,
-              marginTop: theme.spacing.md,
             },
           ]}
           onPress={handleBlockedUsers}
@@ -134,7 +212,7 @@ export default function SettingsScreen() {
       </View>
 
       {/* Logout Button */}
-      <View style={[styles.section, { marginTop: theme.spacing.xxxl }]}>
+      <View style={[styles.section, { marginTop: theme.spacing.xxxl, marginBottom: theme.spacing.xxxl }]}>
         <TouchableOpacity
           style={[
             styles.logoutButton,
@@ -152,6 +230,19 @@ export default function SettingsScreen() {
             Logout
           </Text>
         </TouchableOpacity>
+      </View>
+
+      {/* App Info */}
+      <View style={[styles.appInfo, { 
+        alignItems: 'center',
+        paddingVertical: theme.spacing.xl,
+      }]}>
+        <Text style={[styles.appVersion, { color: theme.colors.textMuted, fontSize: 12 }]}>
+          ChatRoom v1.0.0
+        </Text>
+        <Text style={[styles.appCopyright, { color: theme.colors.textMuted, fontSize: 10, marginTop: theme.spacing.xs }]}>
+          © 2024 ChatRoom. All rights reserved.
+        </Text>
       </View>
     </ScrollView>
   );
@@ -171,6 +262,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   section: {},
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
   settingItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -205,4 +302,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  appInfo: {},
+  appVersion: {},
+  appCopyright: {},
 });

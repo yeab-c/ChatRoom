@@ -1,11 +1,11 @@
 export const lightColors = {
-  primary: '#6366F1',
-  primaryDark: '#4F46E5',
-  primaryLight: '#818CF8',
+  primary: '#4A5FCC',
+  primaryDark: '#3A4FB8',
+  primaryLight: '#5A6FDC',
   
-  // Gradient colors
-  gradientStart: '#8B5CF6',
-  gradientEnd: '#EC4899',
+  // Gradient colors - using shades of the logo blue
+  gradientStart: '#4A5FCC',
+  gradientEnd: '#5A6FDC',
   
   background: '#F9FAFB',
   surface: '#FFFFFF',
@@ -23,7 +23,7 @@ export const lightColors = {
   warning: '#F59E0B',
   
   // Chat specific
-  messageSent: '#6366F1',
+  messageSent: '#4A5FCC',
   messageReceived: '#F3F4F6',
   online: '#10B981',
   offline: '#9CA3AF',
@@ -34,12 +34,12 @@ export const lightColors = {
 };
 
 export const darkColors = {
-  primary: '#6366F1',
-  primaryDark: '#818CF8',
-  primaryLight: '#4F46E5',
+  primary: '#4A5FCC',
+  primaryDark: '#5A6FDC',
+  primaryLight: '#3A4FB8',
   
-  gradientStart: '#8B5CF6',
-  gradientEnd: '#EC4899',
+  gradientStart: '#4A5FCC',
+  gradientEnd: '#5A6FDC',
   
   background: '#111827',
   surface: '#1F2937',
@@ -56,7 +56,7 @@ export const darkColors = {
   success: '#10B981',
   warning: '#F59E0B',
   
-  messageSent: '#6366F1',
+  messageSent: '#4A5FCC',
   messageReceived: '#374151',
   online: '#10B981',
   offline: '#6B7280',

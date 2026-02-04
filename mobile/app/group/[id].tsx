@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Platform,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,126 +17,71 @@ import { useAuth } from '../../src/context/AuthContext';
 import { Avatar } from '../../src/components/common/Avatar';
 import { MessageBubble } from '../../src/components/chat/MessageBubble';
 import { MessageInput } from '../../src/components/chat/MessageInput';
-import { Message } from '../../src/types';
+import { TypingIndicator } from '../../src/components/chat/TypingIndicator';
+import { ImageViewer } from '../../src/components/common/ImageViewer';
+import { useGroup } from '../../src/hooks/useGroup';
 
 export default function GroupChatScreen() {
   const { theme } = useTheme();
   const { user } = useAuth();
   const router = useRouter();
   const { id } = useLocalSearchParams();
-  const flatListRef = useRef<FlatList>(null);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
-  const [messages, setMessages] = useState<Message[]>([]);
+  const {
+    group,
+    messages,
+    loading,
+    sending,
+    isTyping,
+    flatListRef,
+    sendTextMessage,
+    sendImageMessage,
+  } = useGroup(id as string);
 
-  // Mock group data
-  const group = {
-    id: id as string,
-    name: 'Weekend Hangout',
-    avatar: '',
-    memberCount: 5,
-    creatorId: '1', // user's id
-  };
-
-  const isCreator = group.creatorId === user?.id;
-
-  const handleSendText = (text: string) => {
-    const newMessage: Message = {
-      _id: Date.now().toString(),
-      chatId: id as string,
-      senderId: user!.id,
-      type: 'text',
-      content: text,
-      readBy: [user!.id],
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      sender: user!,
-    };
-
-    setMessages([...messages, newMessage]);
-    setTimeout(() => {
-      flatListRef.current?.scrollToEnd({ animated: true });
-    }, 100);
-  };
-
-  const handleSendImage = (imageUrl: string) => {
-    const newMessage: Message = {
-      _id: Date.now().toString(),
-      chatId: id as string,
-      senderId: user!.id,
-      type: 'image',
-      content: imageUrl,
-      readBy: [user!.id],
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      sender: user!,
-    };
-
-    setMessages([...messages, newMessage]);
-    setTimeout(() => {
-      flatListRef.current?.scrollToEnd({ animated: true });
-    }, 100);
-  };
+  useEffect(() => {
+    if (messages.length > 0) {
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: false });
+      }, 100);
+    }
+  }, [messages.length]);
 
   const handleBack = () => {
     router.push('/(tabs)/chats');
   };
 
-  const handleGroupInfo = () => {
+  const handleViewInfo = () => {
     router.push({
       pathname: '/group/info',
-      params: { groupId: id },
+      params: { id },
     });
   };
 
-  const handleLeaveGroup = () => {
-    Alert.alert(
-      'Leave Group',
-      `Are you sure you want to leave ${group.name}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Leave',
-          style: 'destructive',
-          onPress: () => {
-            Alert.alert('Left Group', `You have left ${group.name}.`);
-            router.replace('/(tabs)/chats');
-          },
+  const handleViewProfile = (senderId: string, senderName: string) => {
+    // Find the sender in group members to get full user data
+    if (!group) return;
+    
+    const member = group.members.find((m: any) => m.userId === senderId);
+    if (member) {
+      router.push({
+        pathname: '/chat/info',
+        params: {
+          chatId: group.mongoGroupId,
+          otherUser: JSON.stringify(member.user),
+          fromGroup: 'true',
         },
-      ]
+      });
+    }
+  };
+
+  if (loading || !group) {
+    return (
+      <View style={[styles.container, styles.centered, { backgroundColor: theme.colors.background }]}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+      </View>
     );
-  };
-
-  const handleDeleteGroup = () => {
-    Alert.alert(
-      'Delete Group',
-      `Are you sure you want to delete ${group.name}? This action cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            Alert.alert('Deleted', `${group.name} has been deleted.`);
-            router.replace('/(tabs)/chats');
-          },
-        },
-      ]
-    );
-  };
-
-  const showOptionsMenu = () => {
-    const options = isCreator
-      ? [
-          { text: 'Delete Group', onPress: handleDeleteGroup, style: 'destructive' as const },
-          { text: 'Cancel', style: 'cancel' as const },
-        ]
-      : [
-          { text: 'Leave Group', onPress: handleLeaveGroup, style: 'destructive' as const },
-          { text: 'Cancel', style: 'cancel' as const },
-        ];
-
-    Alert.alert(group.name, 'Choose an action', options);
-  };
+  }
 
   return (
     <KeyboardAvoidingView
@@ -160,18 +106,20 @@ export default function GroupChatScreen() {
           <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.headerCenter} onPress={handleGroupInfo}>
+        <TouchableOpacity style={styles.headerCenter} onPress={handleViewInfo}>
           <Avatar uri={group.avatar} name={group.name} size="small" />
           <View style={{ marginLeft: theme.spacing.md }}>
-            <Text style={[styles.headerName, { color: theme.colors.text }]}>{group.name}</Text>
+            <Text style={[styles.headerName, { color: theme.colors.text }]}>
+              {group.name}
+            </Text>
             <Text style={[styles.headerStatus, { color: theme.colors.textMuted }]}>
-              {group.memberCount} members
+              {group.members?.length || 0} members
             </Text>
           </View>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={showOptionsMenu} style={styles.optionsButton}>
-          <Ionicons name="ellipsis-vertical" size={24} color={theme.colors.text} />
+        <TouchableOpacity onPress={handleViewInfo} style={styles.optionsButton}>
+          <Ionicons name="information-circle-outline" size={24} color={theme.colors.text} />
         </TouchableOpacity>
       </View>
 
@@ -179,33 +127,39 @@ export default function GroupChatScreen() {
       <FlatList
         ref={flatListRef}
         data={messages}
-        keyExtractor={(item) => item._id}
+        keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <View>
-            {item.senderId !== user?.id && (
-              <Text style={[styles.senderName, { color: theme.colors.primary, marginLeft: theme.spacing.lg, marginTop: theme.spacing.sm }]}>
-                {item.sender?.name}
-              </Text>
-            )}
-            <MessageBubble message={item} isOwnMessage={item.senderId === user?.id} />
-          </View>
+          <MessageBubble
+            message={item}
+            isOwnMessage={item.sender.id === user?.id}
+            onImagePress={(uri) => setSelectedImage(uri)}
+            showSenderInfo={true}
+            onSenderPress={handleViewProfile}
+          />
         )}
         contentContainerStyle={{
           padding: theme.spacing.lg,
           paddingBottom: theme.spacing.xxl,
         }}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="chatbubbles-outline" size={64} color={theme.colors.textMuted} />
-            <Text style={[styles.emptyText, { color: theme.colors.textMuted, marginTop: theme.spacing.md }]}>
-              Start the conversation!
-            </Text>
-          </View>
-        }
+        ListFooterComponent={isTyping ? <TypingIndicator userName="Someone" /> : null}
+        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
       />
 
       {/* Input */}
-      <MessageInput onSendText={handleSendText} onSendImage={handleSendImage} />
+      <MessageInput
+        onSendText={sendTextMessage}
+        onSendImage={sendImageMessage}
+        disabled={sending}
+      />
+
+      {/* Image Viewer */}
+      {selectedImage && (
+        <ImageViewer
+          visible={!!selectedImage}
+          imageUrl={selectedImage}
+          onClose={() => setSelectedImage(null)}
+        />
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -213,6 +167,10 @@ export default function GroupChatScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  centered: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   header: {
     flexDirection: 'row',
@@ -238,17 +196,5 @@ const styles = StyleSheet.create({
   },
   optionsButton: {
     padding: 4,
-  },
-  senderName: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 80,
-  },
-  emptyText: {
-    fontSize: 14,
   },
 });

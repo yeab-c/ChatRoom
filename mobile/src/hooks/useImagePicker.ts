@@ -1,11 +1,15 @@
 import { useState } from 'react';
 import { Alert } from 'react-native';
-import imageUploadService, { ImageUploadOptions, UploadProgress } from '../services/upload/imageUpload';
+import imageUploadService from '../services/upload/imageUpload';
+import type { ImageUploadOptions, UploadProgress } from '../services/upload/imageUpload';
 
 export const useImagePicker = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
 
+  
+   // Pick and upload image
+   
   const pickAndUpload = async (
     useCamera: boolean = false,
     options: ImageUploadOptions = {}
@@ -22,10 +26,17 @@ export const useImagePicker = () => {
         }
       );
 
+      if (url) {
+        console.log('Image uploaded successfully:', url);
+      }
+
       return url;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Image upload failed:', error);
-      Alert.alert('Upload Failed', 'Failed to upload image. Please try again.');
+      
+      const errorMessage = error.response?.data?.message || 'Failed to upload image. Please try again.';
+      Alert.alert('Upload Failed', errorMessage);
+      
       return null;
     } finally {
       setIsUploading(false);
@@ -33,6 +44,9 @@ export const useImagePicker = () => {
     }
   };
 
+  
+   // Show image picker options modal
+   
   const showImagePickerOptions = (
     onImageSelected: (url: string) => void,
     options: ImageUploadOptions = {}
@@ -63,10 +77,66 @@ export const useImagePicker = () => {
     );
   };
 
+  
+   // Upload profile picture
+   
+  const uploadProfilePicture = async (useCamera: boolean = false): Promise<string | null> => {
+    return pickAndUpload(useCamera, {
+      type: 'profile',
+      maxWidth: 500,
+      maxHeight: 500,
+      quality: 0.8,
+    });
+  };
+
+  
+   // Upload message image
+   
+  const uploadMessageImage = async (useCamera: boolean = false): Promise<string | null> => {
+    return pickAndUpload(useCamera, {
+      type: 'message',
+      maxWidth: 1024,
+      maxHeight: 1024,
+      quality: 0.7,
+    });
+  };
+
+  
+   // Upload group avatar
+   
+  const uploadGroupAvatar = async (useCamera: boolean = false): Promise<string | null> => {
+    return pickAndUpload(useCamera, {
+      type: 'group',
+      maxWidth: 500,
+      maxHeight: 500,
+      quality: 0.8,
+    });
+  };
+
   return {
+    // Generic
     pickAndUpload,
     showImagePickerOptions,
+
+    // Specific types
+    uploadProfilePicture,
+    uploadMessageImage,
+    uploadGroupAvatar,
+
+    // State
     isUploading,
     uploadProgress,
   };
 };
+
+
+
+
+
+
+
+
+
+
+
+

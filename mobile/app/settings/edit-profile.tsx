@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Image,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,13 +18,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../src/context/ThemeContext';
 import { useAuth } from '../../src/context/AuthContext';
 import { useImagePicker } from '../../src/hooks/useImagePicker';
+import { userService } from '../../src/services/api';
 import { Button } from '../../src/components/common/Button';
 
 export default function EditProfileScreen() {
   const { theme } = useTheme();
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, refreshUser } = useAuth();
   const router = useRouter();
-  const { showImagePickerOptions, isUploading } = useImagePicker();
+  const { uploadProfilePicture, isUploading } = useImagePicker();
 
   const [name, setName] = useState(user?.name || '');
   const [bio, setBio] = useState(user?.bio || '');
@@ -34,13 +36,18 @@ export default function EditProfileScreen() {
   const [avatar, setAvatar] = useState(user?.avatar || '');
   const [isSaving, setIsSaving] = useState(false);
 
-  const handleChangeAvatar = () => {
-    showImagePickerOptions(
-      (url) => {
-        setAvatar(url);
-      },
-      { folder: 'profiles', maxWidth: 512, maxHeight: 512, quality: 0.8 }
-    );
+  const handleChangeAvatar = async () => {
+    try {
+      // Upload new avatar
+      const imageUrl = await uploadProfilePicture(false);
+
+      if (imageUrl) {
+        setAvatar(imageUrl);
+      }
+    } catch (error) {
+      console.error('Failed to upload avatar:', error);
+      Alert.alert('Error', 'Failed to upload image');
+    }
   };
 
   const handleSave = async () => {
@@ -52,15 +59,28 @@ export default function EditProfileScreen() {
     try {
       setIsSaving(true);
 
-      updateUser({
-        name,
-        bio,
-        gender,
-        age: age ? parseInt(age) : undefined,
-        country,
-        hobbies,
-        avatar,
-      });
+      // Prepare update data - only include fields with values
+      const updateData: any = {
+        name: name.trim(),
+      };
+
+      // Only add optional fields if they have values
+      if (bio.trim()) updateData.bio = bio.trim();
+      if (gender.trim()) updateData.gender = gender.trim();
+      if (age) updateData.age = parseInt(age);
+      if (country.trim()) updateData.country = country.trim();
+      if (hobbies.trim()) updateData.hobbies = hobbies.trim();
+
+      // Update profile via API
+      const response = await userService.updateProfile(updateData);
+
+      // Update avatar separately if changed
+      if (avatar !== user?.avatar && avatar) {
+        await userService.updateAvatar(avatar);
+      }
+
+      // Refresh user data from backend
+      await refreshUser();
 
       Alert.alert('Success!', 'Profile updated successfully', [
         {
@@ -68,8 +88,9 @@ export default function EditProfileScreen() {
           onPress: () => router.back(),
         },
       ]);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to update profile');
+    } catch (error: any) {
+      console.error('Failed to update profile:', error);
+      Alert.alert('Error', error.response?.data?.message || 'Failed to update profile');
     } finally {
       setIsSaving(false);
     }
@@ -110,10 +131,17 @@ export default function EditProfileScreen() {
           <View style={styles.avatarSection}>
             <TouchableOpacity onPress={handleChangeAvatar} disabled={isUploading}>
               {avatar ? (
-                <Image
-                  source={{ uri: avatar }}
-                  style={[styles.avatarImage, { borderRadius: 60 }]}
-                />
+                <View>
+                  <Image
+                    source={{ uri: avatar }}
+                    style={[styles.avatarImage, { borderRadius: 60 }]}
+                  />
+                  {isUploading && (
+                    <View style={styles.avatarOverlay}>
+                      <ActivityIndicator size="large" color="#FFFFFF" />
+                    </View>
+                  )}
+                </View>
               ) : (
                 <LinearGradient
                   colors={[theme.colors.gradientStart, theme.colors.gradientEnd]}
@@ -179,6 +207,7 @@ export default function EditProfileScreen() {
               placeholderTextColor={theme.colors.textMuted}
               multiline
               numberOfLines={3}
+              maxLength={200}
               style={[
                 styles.input,
                 styles.textArea,
@@ -192,6 +221,9 @@ export default function EditProfileScreen() {
                 },
               ]}
             />
+            <Text style={[styles.charCount, { color: theme.colors.textMuted, marginTop: theme.spacing.xs }]}>
+              {bio.length}/200
+            </Text>
           </View>
 
           <View style={styles.row}>
@@ -285,6 +317,7 @@ export default function EditProfileScreen() {
             title="Save Changes"
             onPress={handleSave}
             loading={isSaving}
+            disabled={isUploading}
             gradient
             fullWidth
             style={{ marginTop: theme.spacing.xl }}
@@ -315,6 +348,17 @@ const styles = StyleSheet.create({
   avatarImage: {
     width: 120,
     height: 120,
+  },
+  avatarOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   avatarGradient: {
     width: 120,
@@ -354,6 +398,10 @@ const styles = StyleSheet.create({
   },
   textArea: {
     minHeight: 80,
+  },
+  charCount: {
+    fontSize: 12,
+    textAlign: 'right',
   },
   row: {
     flexDirection: 'row',
