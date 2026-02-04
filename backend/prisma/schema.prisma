@@ -1,0 +1,172 @@
+
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// USER MODEL
+model User {
+  id              String   @id @default(uuid())
+  clerkId         String   @unique
+  email           String   @unique
+  name            String
+  avatar          String   @default("")
+  bio             String?
+  gender          String?
+  age             Int?
+  country         String?
+  hobbies         String?  // Comma-separated values
+  
+  // Random matching state
+  isSearching     Boolean  @default(false)
+  searchingAt     DateTime?
+  
+  // Activity tracking
+  isOnline        Boolean  @default(false)
+  lastSeen        DateTime @default(now())
+  
+  // Ban status
+  isBanned        Boolean  @default(false)
+  bannedAt        DateTime?
+  bannedUntil     DateTime?
+  banReason       String?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Relations
+  createdGroups   Group[]  @relation("GroupCreator")
+  groupMemberships GroupMember[]
+  reportsMade     Report[] @relation("Reporter")
+  reportsReceived Report[] @relation("ReportedUser")
+  blockedUsers    BlockedUser[] @relation("Blocker")
+  blockedBy       BlockedUser[] @relation("Blocked")
+  savedChats      SavedChat[]
+  
+  @@map("users")
+  @@index([isSearching, isOnline, isBanned])
+  @@index([clerkId])
+  @@index([email])
+  @@index([isBanned])
+  @@index([isOnline])
+}
+
+
+// GROUP MODEL
+model Group {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  creatorId   String
+  avatar      String?  @default("")
+  
+  // MongoDB reference
+  mongoGroupId String  @unique
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  creator     User     @relation("GroupCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  members     GroupMember[]
+  
+  @@map("groups")
+  @@index([creatorId])
+  @@index([mongoGroupId])
+}
+
+// GROUP MEMBER MODEL
+model GroupMember {
+  id        String   @id @default(uuid())
+  groupId   String
+  userId    String
+  role      String   @default("member") // member, admin
+  
+  joinedAt  DateTime @default(now())
+  
+  // Relations
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([groupId, userId])
+  @@map("group_members")
+  @@index([groupId])
+  @@index([userId])
+}
+
+// REPORT MODEL
+model Report {
+  id               String   @id @default(uuid())
+  reporterId       String
+  reportedUserId   String
+  reason           String
+  status           String   @default("pending") // pending, reviewed, resolved, dismissed
+  
+  // Admin review
+  reviewedBy       String?
+  reviewedAt       DateTime?
+  reviewNotes      String?
+  
+  createdAt        DateTime @default(now())
+  
+  // Relations
+  reporter         User     @relation("Reporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  reportedUser     User     @relation("ReportedUser", fields: [reportedUserId], references: [id], onDelete: Cascade)
+  
+  @@map("reports")
+  @@index([reporterId])
+  @@index([reportedUserId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// BLOCKED USER MODEL
+model BlockedUser {
+  id              String   @id @default(uuid())
+  blockerId       String   // User who blocked
+  blockedId       String   // User who was blocked
+  
+  createdAt       DateTime @default(now())
+  
+  // Relations
+  blocker         User     @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked         User     @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+  
+  @@unique([blockerId, blockedId])
+  @@map("blocked_users")
+  @@index([blockerId])
+  @@index([blockedId])
+}
+
+
+// SAVED CHAT MODEL
+model SavedChat {
+  id              String   @id @default(uuid())
+  userId          String   // User who saved this chat
+  otherUserId     String   // The other participant
+  
+  // MongoDB reference
+  mongoChatId     String
+  
+  // Metadata for quick access
+  lastMessageAt   DateTime?
+  lastMessagePreview String?
+  unreadCount     Int      @default(0)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Relations
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, otherUserId])
+  @@map("saved_chats")
+  @@index([userId])
+  @@index([mongoChatId])
+  @@index([lastMessageAt])
+}
